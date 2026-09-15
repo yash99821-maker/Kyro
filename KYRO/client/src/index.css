@@ -1,0 +1,323 @@
+@import 'tailwindcss';
+
+/* ============================================================
+   KYRO DESIGN SYSTEM
+   Smart Digital Payments & Money Management
+
+   Deep navy foundation, electric cyan accent for actions, and a
+   distinct green reserved for money that grows (savings, credits).
+   ============================================================ */
+
+@theme {
+  /* Brand navy — surfaces, headers, primary buttons */
+  --color-navy-50: #f2f5fb;
+  --color-navy-100: #e2e8f5;
+  --color-navy-200: #c5d0ea;
+  --color-navy-300: #96a9d6;
+  --color-navy-400: #5f79b8;
+  --color-navy-500: #3d569c;
+  --color-navy-600: #2b3f7d;
+  --color-navy-700: #1e2d5e;
+  --color-navy-800: #142046;
+  --color-navy-900: #0e1735;
+  --color-navy-950: #070d20;
+
+  /* Electric cyan — the KYRO accent */
+  --color-kyro-50: #e6fbff;
+  --color-kyro-100: #c7f5ff;
+  --color-kyro-200: #96edff;
+  --color-kyro-300: #57e1ff;
+  --color-kyro-400: #22cdf5;
+  --color-kyro-500: #06aed4;
+  --color-kyro-600: #068bb0;
+  --color-kyro-700: #0b6f8e;
+  --color-kyro-800: #125a73;
+  --color-kyro-900: #144b61;
+
+  /* Money-positive green — savings, credits, success */
+  --color-mint-50: #ecfdf5;
+  --color-mint-100: #d1fae5;
+  --color-mint-200: #a7f3d0;
+  --color-mint-300: #6ee7b7;
+  --color-mint-400: #34d399;
+  --color-mint-500: #10b981;
+  --color-mint-600: #059669;
+  --color-mint-700: #047857;
+
+  --font-sans:
+    'Plus Jakarta Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --radius-xl2: 1.25rem;
+}
+
+/* ---------- Semantic surface tokens (light + dark) ---------- */
+
+:root {
+  --surface-app: #f4f6fb;
+  --surface-card: #ffffff;
+  --surface-muted: #eef2f9;
+  --surface-border: #e3e9f4;
+  --text-strong: #0e1735;
+  --text-muted: #64748b;
+  color-scheme: light;
+}
+
+.dark {
+  --surface-app: #070d20;
+  --surface-card: #101a36;
+  --surface-muted: #16223f;
+  --surface-border: #1e2b4c;
+  --text-strong: #eef2fb;
+  --text-muted: #93a3c0;
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--surface-app);
+  color: var(--text-strong);
+  -webkit-font-smoothing: antialiased;
+  /* Never allow the page itself to scroll sideways on a phone. */
+  overflow-x: hidden;
+}
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Utility classes bound to the semantic tokens. */
+@layer utilities {
+  .bg-app {
+    background-color: var(--surface-app);
+  }
+  .bg-card {
+    background-color: var(--surface-card);
+  }
+  .bg-muted {
+    background-color: var(--surface-muted);
+  }
+  .border-app {
+    border-color: var(--surface-border);
+  }
+  .text-strong {
+    color: var(--text-strong);
+  }
+  .text-soft {
+    color: var(--text-muted);
+  }
+  .safe-bottom {
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+  }
+  .safe-top {
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+  }
+  /* Hides a scrollbar without disabling scrolling (horizontal chip rows). */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ---------- Signature KYRO surfaces ---------- */
+
+.kyro-gradient {
+  background:
+    radial-gradient(120% 120% at 10% 0%, #1e2d5e 0%, transparent 55%),
+    radial-gradient(100% 100% at 100% 0%, #06aed4 0%, transparent 45%),
+    linear-gradient(150deg, #0e1735 0%, #142046 55%, #0b1a3c 100%);
+}
+
+.kyro-save-gradient {
+  background: linear-gradient(140deg, #047857 0%, #0f766e 45%, #0b6f8e 100%);
+}
+
+.kyro-ai-gradient {
+  background: linear-gradient(140deg, #2b3f7d 0%, #125a73 55%, #06aed4 130%);
+}
+
+.kyro-card {
+  background-color: var(--surface-card);
+  border: 1px solid var(--surface-border);
+  border-radius: 1.25rem;
+}
+
+/* Focus ring used across every interactive element for keyboard users. */
+.focus-ring:focus-visible {
+  outline: 2px solid var(--color-kyro-500);
+  outline-offset: 2px;
+  border-radius: 0.75rem;
+}
+
+/* ---------- Scrollbars ---------- */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 116, 139, 0.35);
+  border-radius: 999px;
+}
+
+/* ---------- Animations ---------- */
+
+@keyframes kyro-pop {
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  70% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes kyro-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes kyro-slide-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes kyro-ring {
+  0% {
+    transform: scale(0.85);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+
+@keyframes kyro-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes kyro-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20%,
+  60% {
+    transform: translateX(-7px);
+  }
+  40%,
+  80% {
+    transform: translateX(7px);
+  }
+}
+
+@keyframes kyro-coin {
+  0% {
+    transform: translateY(-26px) rotate(0deg);
+    opacity: 0;
+  }
+  25% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(26px) rotate(300deg);
+    opacity: 0;
+  }
+}
+
+.animate-pop {
+  animation: kyro-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+.animate-fade-up {
+  animation: kyro-fade-up 0.35s ease-out both;
+}
+.animate-sheet {
+  animation: kyro-slide-up 0.3s cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+.animate-ring {
+  animation: kyro-ring 1.4s ease-out infinite;
+}
+.animate-shake {
+  animation: kyro-shake 0.4s ease-in-out;
+}
+.animate-coin {
+  animation: kyro-coin 1.1s ease-out forwards;
+}
+
+/* Skeleton shimmer used by every loading state. */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--surface-muted);
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.45),
+    transparent
+  );
+  animation: kyro-shimmer 1.5s infinite;
+}
+.dark .skeleton::after {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.07),
+    transparent
+  );
+}
+
+/* Respect users who prefer reduced motion. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Strip the spinner from number inputs so amount fields look clean. */
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+}
