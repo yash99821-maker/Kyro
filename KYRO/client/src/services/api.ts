@@ -9,7 +9,10 @@ import axios, { AxiosError } from 'axios'
  */
 export const api = axios.create({
   baseURL: '/api',
-  timeout: 15000,
+  // Render's free tier can take 30-50s to wake a sleeping instance, so this
+  // is generous enough to survive a cold start rather than failing a
+  // request that the server is still about to complete successfully.
+  timeout: 60000,
   headers: { 'Content-Type': 'application/json' },
 })
 

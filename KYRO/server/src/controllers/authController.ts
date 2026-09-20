@@ -61,7 +61,23 @@ export async function verifyOtp(req: Request, res: Response) {
 
   const challenge = await OtpToken.findOne({ mobileNumber }).sort({ createdAt: -1 })
   if (!challenge) {
-    throw ApiError.badRequest('That code has expired. Please request a new one.')
+    // No pending challenge — this is either a stale/replayed request or the
+    // number really has no OTP outstanding. If an account for this number
+    // already exists and the submitted code is the correct demo code, treat
+    // it as a retry of a request that already succeeded (e.g. the client
+    // timed out on a slow cold-start response) rather than failing it: the
+    // OTP itself was genuinely correct, it is just no longer on record.
+    const existingUser = otp === DEMO_OTP ? await User.findOne({ mobileNumber }) : null
+    if (!existingUser) {
+      throw ApiError.badRequest('That code has expired. Please request a new one.')
+    }
+    const token = signAuthToken(String(existingUser._id))
+    res.json({
+      success: true,
+      message: 'Signed in',
+      data: { token, user: existingUser.toJSON(), isNewUser: false },
+    })
+    return
   }
   if (challenge.expiresAt.getTime() < Date.now()) {
     await challenge.deleteOne()
@@ -79,35 +95,54 @@ export async function verifyOtp(req: Request, res: Response) {
     throw ApiError.badRequest('That verification code is incorrect.')
   }
 
-  await challenge.deleteOne()
-
+  // Delete the challenge only after we are sure this request will finish
+  // successfully — a slow connection (e.g. a cold-starting free-tier server)
+  // can make the client retry a request that already succeeded server-side.
+  // Deleting the challenge up front made that harmless retry fail with a
+  // confusing "code expired" error even though the code was correct.
   let user = await User.findOne({ mobileNumber })
   let isNewUser = false
 
   if (!user) {
     const displayName = name?.trim() || `KYRO User ${mobileNumber.slice(-4)}`
-    user = new User({
-      name: displayName,
-      mobileNumber,
-      upiId: buildUpiId(displayName, mobileNumber),
-      balance: 25450, // demo opening balance
-      savingsBalance: 0,
-      kyroSave: { enabled: true, roundUpTo: 10, goalName: 'Laptop Goal', goalAmount: 60000 },
-    })
-    // Demo accounts start with a known PIN so the flow can be demonstrated.
-    // It is stored as a bcrypt hash, never in plain text.
-    await user.setTransactionPin(DEFAULT_DEMO_PIN)
-    await user.save()
-    isNewUser = true
+    try {
+      user = new User({
+        name: displayName,
+        mobileNumber,
+        upiId: buildUpiId(displayName, mobileNumber),
+        balance: 25450, // demo opening balance
+        savingsBalance: 0,
+        kyroSave: { enabled: true, roundUpTo: 10, goalName: 'Laptop Goal', goalAmount: 60000 },
+      })
+      // Demo accounts start with a known PIN so the flow can be demonstrated.
+      // It is stored as a bcrypt hash, never in plain text.
+      await user.setTransactionPin(DEFAULT_DEMO_PIN)
+      await user.save()
+      isNewUser = true
 
-    await createNotification(
-      user._id,
-      'SYSTEM',
-      'Welcome to KYRO',
-      'Your account is ready. Every payment you make now rounds up into Kyro Save.',
-      '/save',
-    )
+      await createNotification(
+        user._id,
+        'SYSTEM',
+        'Welcome to KYRO',
+        'Your account is ready. Every payment you make now rounds up into Kyro Save.',
+        '/save',
+      )
+    } catch (error) {
+      // A retried request (client timed out but the server had already
+      // finished creating the account) lands here as a duplicate-key error
+      // on mobileNumber/upiId. Treat it as a normal sign-in instead of
+      // failing the request.
+      const isDuplicateKey =
+        typeof error === 'object' && error !== null && 'code' in error && (error as { code: number }).code === 11000
+      if (!isDuplicateKey) throw error
+      const existing = await User.findOne({ mobileNumber })
+      if (!existing) throw error
+      user = existing
+      isNewUser = false
+    }
   }
+
+  await challenge.deleteOne()
 
   const token = signAuthToken(String(user._id))
   res.json({
