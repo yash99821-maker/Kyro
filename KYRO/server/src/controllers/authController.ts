@@ -11,21 +11,11 @@ import { createNotification } from '../services/notificationService.js'
 const OTP_TTL_MS = 5 * 60 * 1000
 const MAX_OTP_ATTEMPTS = 5
 
-/**
- * POST /api/auth/login
- *
- * Issues an OTP challenge for a mobile number.
- *
- * DEMO SCOPE: no SMS provider is contacted. The code is always the fixed
- * DEMO_OTP, but it is still hashed, stored with a 5-minute expiry, and
- * verified server-side — the client can never bypass the check.
- */
 export async function requestOtp(req: Request, res: Response) {
   const { mobileNumber } = req.body as { mobileNumber: string }
 
   const existing = await User.findOne({ mobileNumber })
 
-  // Replace any previous challenge for this number.
   await OtpToken.deleteMany({ mobileNumber })
   await OtpToken.create({
     mobileNumber,
@@ -40,18 +30,11 @@ export async function requestOtp(req: Request, res: Response) {
       mobileNumber,
       isExistingUser: Boolean(existing),
       name: existing?.name ?? null,
-      // Surfaced only so the demo can be run without an SMS gateway.
       demoMode: true,
     },
   })
 }
 
-/**
- * POST /api/auth/verify-otp
- *
- * Verifies the challenge and returns a JWT. Creates the account on first
- * successful verification (passwordless sign-up, as in most payment apps).
- */
 export async function verifyOtp(req: Request, res: Response) {
   const { mobileNumber, otp, name } = req.body as {
     mobileNumber: string
@@ -61,12 +44,6 @@ export async function verifyOtp(req: Request, res: Response) {
 
   const challenge = await OtpToken.findOne({ mobileNumber }).sort({ createdAt: -1 })
   if (!challenge) {
-    // No pending challenge — this is either a stale/replayed request or the
-    // number really has no OTP outstanding. If an account for this number
-    // already exists and the submitted code is the correct demo code, treat
-    // it as a retry of a request that already succeeded (e.g. the client
-    // timed out on a slow cold-start response) rather than failing it: the
-    // OTP itself was genuinely correct, it is just no longer on record.
     const existingUser = otp === DEMO_OTP ? await User.findOne({ mobileNumber }) : null
     if (!existingUser) {
       throw ApiError.badRequest('That code has expired. Please request a new one.')
@@ -95,11 +72,6 @@ export async function verifyOtp(req: Request, res: Response) {
     throw ApiError.badRequest('That verification code is incorrect.')
   }
 
-  // Delete the challenge only after we are sure this request will finish
-  // successfully — a slow connection (e.g. a cold-starting free-tier server)
-  // can make the client retry a request that already succeeded server-side.
-  // Deleting the challenge up front made that harmless retry fail with a
-  // confusing "code expired" error even though the code was correct.
   let user = await User.findOne({ mobileNumber })
   let isNewUser = false
 
@@ -110,12 +82,10 @@ export async function verifyOtp(req: Request, res: Response) {
         name: displayName,
         mobileNumber,
         upiId: buildUpiId(displayName, mobileNumber),
-        balance: 25450, // demo opening balance
+        balance: 25450,
         savingsBalance: 0,
         kyroSave: { enabled: true, roundUpTo: 10, goalName: 'Laptop Goal', goalAmount: 60000 },
       })
-      // Demo accounts start with a known PIN so the flow can be demonstrated.
-      // It is stored as a bcrypt hash, never in plain text.
       await user.setTransactionPin(DEFAULT_DEMO_PIN)
       await user.save()
       isNewUser = true
@@ -128,21 +98,36 @@ export async function verifyOtp(req: Request, res: Response) {
         '/save',
       )
     } catch (error) {
-      // A retried request (client timed out but the server had already
-      // finished creating the account) lands here as a duplicate-key error
-      // on mobileNumber/upiId. Treat it as a normal sign-in instead of
-      // failing the request.
       const isDuplicateKey =
         typeof error === 'object' && error !== null && 'code' in error && (error as { code: number }).code === 11000
       if (!isDuplicateKey) throw error
-      const existing = await User.findOne({ mobileNumber })
-      if (!existing) throw error
-      user = existing
-      isNewUser = false
+
+      const keyPattern = (error as { keyPattern?: Record<string, unknown> }).keyPattern
+      const duplicateField = keyPattern ? Object.keys(keyPattern)[0] : undefined
+
+      if (duplicateField === 'upiId') {
+        user!.upiId = `${user!.upiId.replace('@kyro', '')}.${mobileNumber.slice(0, 4)}@kyro`
+        await user!.save()
+        isNewUser = true
+        await createNotification(
+          user!._id,
+          'SYSTEM',
+          'Welcome to KYRO',
+          'Your account is ready. Every payment you make now rounds up into Kyro Save.',
+          '/save',
+        )
+      } else {
+        const existing = await User.findOne({ mobileNumber })
+        if (!existing) throw error
+        user = existing
+        isNewUser = false
+      }
     }
   }
 
   await challenge.deleteOne()
+
+  if (!user) throw new ApiError(500, 'Could not create or find the user account.')
 
   const token = signAuthToken(String(user._id))
   res.json({
@@ -152,19 +137,11 @@ export async function verifyOtp(req: Request, res: Response) {
   })
 }
 
-/** GET /api/auth/me — returns the signed-in user. */
 export async function me(req: Request, res: Response) {
   const user = currentUser(req)
   res.json({ success: true, data: { user: user.toJSON() } })
 }
 
-/**
- * POST /api/auth/logout
- *
- * JWTs are stateless, so the server has nothing to revoke here; the client
- * discards the token. The endpoint exists so logout is an explicit,
- * auditable action rather than a silent client-side delete.
- */
 export async function logout(_req: Request, res: Response) {
   res.json({ success: true, message: 'Signed out' })
 }

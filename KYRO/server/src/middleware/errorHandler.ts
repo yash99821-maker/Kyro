@@ -7,10 +7,6 @@ export function notFoundHandler(req: Request, _res: Response, next: NextFunction
   next(ApiError.notFound(`Route ${req.method} ${req.originalUrl} does not exist.`))
 }
 
-/**
- * Central error handler. Turns anything thrown anywhere in the API into a
- * consistent JSON shape: { success: false, message, details? }.
- */
 export function errorHandler(
   error: unknown,
   _req: Request,
@@ -33,7 +29,14 @@ export function errorHandler(
     message = 'That record id is not valid.'
   } else if (typeof error === 'object' && error !== null && 'code' in error && (error as { code: number }).code === 11000) {
     statusCode = 409
-    message = 'That record already exists.'
+    const keyPattern = (error as { keyPattern?: Record<string, unknown> }).keyPattern
+    const field = keyPattern ? Object.keys(keyPattern)[0] : undefined
+    message =
+      field === 'mobileNumber'
+        ? 'An account with this mobile number already exists.'
+        : field === 'upiId'
+          ? 'That UPI ID is already taken. Please try a different name.'
+          : 'That record already exists.'
   } else if (error instanceof Error && !isProduction) {
     message = error.message
   }
