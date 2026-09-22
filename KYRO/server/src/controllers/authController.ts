@@ -2,7 +2,7 @@ import bcrypt from 'bcryptjs'
 import type { Request, Response } from 'express'
 import { DEMO_OTP, DEFAULT_DEMO_PIN } from '../config/constants.js'
 import { OtpToken } from '../models/OtpToken.js'
-import { User } from '../models/User.js'
+import { IUser, User } from '../models/User.js'
 import { currentUser, signAuthToken } from '../middleware/auth.js'
 import { ApiError } from '../utils/ApiError.js'
 import { buildUpiId } from '../utils/reference.js'
@@ -72,62 +72,73 @@ export async function verifyOtp(req: Request, res: Response) {
     throw ApiError.badRequest('That verification code is incorrect.')
   }
 
-  let user = await User.findOne({ mobileNumber })
-  let isNewUser = false
+  // Account creation uses an atomic upsert keyed on mobileNumber instead of
+  // "find, then insert if missing" — that pattern was inherently racy: two
+  // near-simultaneous requests could both see "no user yet" and both try to
+  // insert, and the loser crashed with a duplicate-key error. An upsert lets
+  // MongoDB itself guarantee only one document is ever created.
+  const wasExistingUser = Boolean(await User.exists({ mobileNumber }))
+  const displayName = name?.trim() || `KYRO User ${mobileNumber.slice(-4)}`
+  const pinHash = wasExistingUser ? undefined : await bcrypt.hash(DEFAULT_DEMO_PIN, 10)
 
-  if (!user) {
-    const displayName = name?.trim() || `KYRO User ${mobileNumber.slice(-4)}`
-    try {
-      user = new User({
-        name: displayName,
-        mobileNumber,
-        upiId: buildUpiId(displayName, mobileNumber),
-        balance: 25450,
-        savingsBalance: 0,
-        kyroSave: { enabled: true, roundUpTo: 10, goalName: 'Laptop Goal', goalAmount: 60000 },
-      })
-      await user.setTransactionPin(DEFAULT_DEMO_PIN)
-      await user.save()
-      isNewUser = true
-
-      await createNotification(
-        user._id,
-        'SYSTEM',
-        'Welcome to KYRO',
-        'Your account is ready. Every payment you make now rounds up into Kyro Save.',
-        '/save',
-      )
-    } catch (error) {
-      const isDuplicateKey =
-        typeof error === 'object' && error !== null && 'code' in error && (error as { code: number }).code === 11000
-      if (!isDuplicateKey) throw error
-
-      const keyPattern = (error as { keyPattern?: Record<string, unknown> }).keyPattern
-      const duplicateField = keyPattern ? Object.keys(keyPattern)[0] : undefined
-
-      if (duplicateField === 'upiId') {
-        user!.upiId = `${user!.upiId.replace('@kyro', '')}.${mobileNumber.slice(0, 4)}@kyro`
-        await user!.save()
-        isNewUser = true
-        await createNotification(
-          user!._id,
-          'SYSTEM',
-          'Welcome to KYRO',
-          'Your account is ready. Every payment you make now rounds up into Kyro Save.',
-          '/save',
-        )
-      } else {
-        const existing = await User.findOne({ mobileNumber })
-        if (!existing) throw error
-        user = existing
-        isNewUser = false
-      }
+  let user: IUser
+  try {
+    user = (await User.findOneAndUpdate(
+      { mobileNumber },
+      {
+        $setOnInsert: {
+          name: displayName,
+          mobileNumber,
+          upiId: buildUpiId(displayName, mobileNumber),
+          balance: 25450,
+          savingsBalance: 0,
+          kyroSave: { enabled: true, roundUpTo: 10, goalName: 'Laptop Goal', goalAmount: 60000 },
+          transactionPinHash: pinHash,
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    ))!
+  } catch (error) {
+    const isDuplicateKey =
+      typeof error === 'object' && error !== null && 'code' in error && (error as { code: number }).code === 11000
+    if (!isDuplicateKey) throw error
+    const keyPattern = (error as { keyPattern?: Record<string, unknown> }).keyPattern
+    if (keyPattern && 'upiId' in keyPattern) {
+      user = (await User.findOneAndUpdate(
+        { mobileNumber },
+        {
+          $setOnInsert: {
+            name: displayName,
+            mobileNumber,
+            upiId: `${buildUpiId(displayName, mobileNumber).replace('@kyro', '')}.${mobileNumber.slice(0, 4)}@kyro`,
+            balance: 25450,
+            savingsBalance: 0,
+            kyroSave: { enabled: true, roundUpTo: 10, goalName: 'Laptop Goal', goalAmount: 60000 },
+            transactionPinHash: pinHash,
+          },
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true },
+      ))!
+    } else {
+      const existing = await User.findOne({ mobileNumber })
+      if (!existing) throw error
+      user = existing
     }
   }
 
-  await challenge.deleteOne()
+  const isNewUser = !wasExistingUser
 
-  if (!user) throw new ApiError(500, 'Could not create or find the user account.')
+  if (isNewUser) {
+    await createNotification(
+      user._id,
+      'SYSTEM',
+      'Welcome to KYRO',
+      'Your account is ready. Every payment you make now rounds up into Kyro Save.',
+      '/save',
+    )
+  }
+
+  await challenge.deleteOne()
 
   const token = signAuthToken(String(user._id))
   res.json({
