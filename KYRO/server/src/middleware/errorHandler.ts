@@ -30,6 +30,7 @@ export function errorHandler(
   } else if (typeof error === 'object' && error !== null && 'code' in error && (error as { code: number }).code === 11000) {
     statusCode = 409
     const keyPattern = (error as { keyPattern?: Record<string, unknown> }).keyPattern
+    const keyValue = (error as { keyValue?: Record<string, unknown> }).keyValue
     const field = keyPattern ? Object.keys(keyPattern)[0] : undefined
     message =
       field === 'mobileNumber'
@@ -37,6 +38,7 @@ export function errorHandler(
         : field === 'upiId'
           ? 'That UPI ID is already taken. Please try a different name.'
           : 'That record already exists.'
+    console.error('[kyro:duplicate-key]', { field, keyValue })
   } else if (error instanceof Error && !isProduction) {
     message = error.message
   }
